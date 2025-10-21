@@ -310,7 +310,8 @@
             <ol>
                 <li>샘플 개수를 입력하세요 (예: 50, 100, 1000)</li>
                 <li>"경로 그리기 시작" 버튼을 클릭하세요</li>
-                <li>지도에서 마우스를 드래그하여 경로를 그리세요</li>
+                <li>지도에서 원하는 지점들을 클릭하여 경로를 만드세요</li>
+                <li>"경로 그리기 종료" 버튼으로 경로 완성</li>
                 <li>"좌표 생성" 버튼으로 균등 분할된 좌표를 생성하세요</li>
                 <li>"CSV 다운로드"로 데이터를 저장하세요</li>
             </ol>
@@ -336,6 +337,7 @@
         let isDrawing = false;
         let drawingPath = [];
         let drawnPolyline = null;
+        let drawingMarkers = [];
         let sampledCoordinates = [];
         let sampledMarkers = [];
         let sampledPolyline = null;
@@ -362,12 +364,16 @@
         function startDrawing() {
             isDrawing = true;
             drawingPath = [];
+            drawingMarkers = [];
+            if (drawnPolyline) {
+                map.removeLayer(drawnPolyline);
+                drawnPolyline = null;
+            }
             drawBtn.textContent = '⏹️ 경로 그리기 종료';
             drawBtn.classList.add('active');
             mapElement.classList.add('drawing');
-            map.dragging.disable();
 
-            updateCoordinatesList('경로를 그리는 중...');
+            updateCoordinatesList('지도를 클릭하여 경로를 만드세요...');
         }
 
         function stopDrawing() {
@@ -375,7 +381,6 @@
             drawBtn.textContent = '✏️ 경로 그리기 시작';
             drawBtn.classList.remove('active');
             mapElement.classList.remove('drawing');
-            map.dragging.enable();
 
             if (drawingPath.length > 1) {
                 // 총 경로 거리 계산
@@ -388,46 +393,52 @@
                 const distanceKm = (totalPathDistance / 1000).toFixed(2);
                 const distanceM = totalPathDistance.toFixed(0);
                 const distText = totalPathDistance >= 1000 ? `${distanceKm} km` : `${distanceM} m`;
-                updateCoordinatesList(`경로 그리기 완료! (${drawingPath.length}개 원본 지점, 총 거리: ${distText})`);
+                updateCoordinatesList(`경로 그리기 완료! (${drawingPath.length}개 지점, 총 거리: ${distText})`);
 
                 // 거리 정보 표시
                 document.getElementById('totalDistance').textContent = distText;
                 document.getElementById('distanceInfo').style.display = 'flex';
             } else {
-                updateCoordinatesList('경로가 너무 짧습니다. 다시 그려주세요.');
+                updateCoordinatesList('경로에 최소 2개 이상의 지점이 필요합니다.');
             }
         }
 
-        // 마우스 이벤트로 경로 그리기
-        map.on('mousedown', function(e) {
+        // 클릭 이벤트로 경로 그리기
+        map.on('click', function(e) {
             if (!isDrawing) return;
 
-            drawingPath = [];
+            // 경로에 점 추가
             drawingPath.push([e.latlng.lat, e.latlng.lng]);
 
+            // 클릭한 위치에 임시 마커 추가
+            const markerNumber = drawingPath.length;
+            const tempMarker = L.circleMarker([e.latlng.lat, e.latlng.lng], {
+                radius: 6,
+                fillColor: '#3498db',
+                color: '#fff',
+                weight: 2,
+                opacity: 1,
+                fillOpacity: 0.8
+            }).addTo(map);
+
+            tempMarker.bindPopup(`<b>경로 지점 ${markerNumber}</b><br>위도: ${e.latlng.lat.toFixed(6)}<br>경도: ${e.latlng.lng.toFixed(6)}`);
+            drawingMarkers.push(tempMarker);
+
+            // 경로선 업데이트
             if (drawnPolyline) {
                 map.removeLayer(drawnPolyline);
             }
 
-            drawnPolyline = L.polyline(drawingPath, {
-                color: '#3498db',
-                weight: 4,
-                opacity: 0.7
-            }).addTo(map);
-        });
+            if (drawingPath.length > 0) {
+                drawnPolyline = L.polyline(drawingPath, {
+                    color: '#3498db',
+                    weight: 4,
+                    opacity: 0.7
+                }).addTo(map);
+            }
 
-        map.on('mousemove', function(e) {
-            if (!isDrawing || drawingPath.length === 0) return;
-
-            drawingPath.push([e.latlng.lat, e.latlng.lng]);
-            drawnPolyline.setLatLngs(drawingPath);
-        });
-
-        map.on('mouseup', function(e) {
-            if (!isDrawing || drawingPath.length === 0) return;
-
-            // 마우스업 시 자동으로 그리기 종료
-            stopDrawing();
+            // 상태 업데이트
+            updateCoordinatesList(`${drawingPath.length}개 지점 추가됨 (클릭하여 계속 추가)`);
         });
 
         // 좌표 생성 (균등 분할)
@@ -446,6 +457,10 @@
 
             // 기존 샘플 마커 제거
             clearSampledData();
+
+            // 임시 마커 제거 (파란색 경로 마커)
+            drawingMarkers.forEach(marker => map.removeLayer(marker));
+            drawingMarkers = [];
 
             // 경로 균등 분할
             sampledCoordinates = interpolatePath(drawingPath, sampleCount);
@@ -610,6 +625,10 @@
                     drawnPolyline = null;
                 }
 
+                // 임시 마커 제거
+                drawingMarkers.forEach(marker => map.removeLayer(marker));
+                drawingMarkers = [];
+
                 // 샘플 데이터 지우기
                 clearSampledData();
 
@@ -618,7 +637,6 @@
                 drawBtn.textContent = '✏️ 경로 그리기 시작';
                 drawBtn.classList.remove('active');
                 mapElement.classList.remove('drawing');
-                map.dragging.enable();
                 generateBtn.disabled = true;
                 exportBtn.disabled = true;
 
