@@ -127,6 +127,32 @@
             font-size: 14px;
         }
 
+        .distance-info {
+            background-color: #34495e;
+            padding: 8px 15px;
+            border-radius: 5px;
+            color: #ecf0f1;
+            font-size: 14px;
+            display: flex;
+            gap: 15px;
+        }
+
+        .distance-item {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .distance-label {
+            font-size: 11px;
+            color: #bdc3c7;
+        }
+
+        .distance-value {
+            font-weight: bold;
+            color: #3498db;
+            font-size: 16px;
+        }
+
         #map {
             flex: 1;
             position: relative;
@@ -164,7 +190,7 @@
         }
 
         #coordinatesList li {
-            padding: 6px 8px;
+            padding: 8px;
             margin: 3px 0;
             background: #ecf0f1;
             border-radius: 4px;
@@ -182,6 +208,31 @@
             font-weight: bold;
             color: #3498db;
             margin-right: 5px;
+        }
+
+        .coord-info {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+
+        .coord-latlon {
+            font-weight: 500;
+        }
+
+        .coord-distance {
+            font-size: 10px;
+            color: #7f8c8d;
+            display: flex;
+            gap: 10px;
+        }
+
+        .dist-segment {
+            color: #e67e22;
+        }
+
+        .dist-total {
+            color: #27ae60;
         }
 
         .empty-message {
@@ -237,6 +288,16 @@
             <button id="generateBtn" disabled>⚡ 좌표 생성</button>
             <button id="clearBtn">🗑️ 모두 지우기</button>
             <button id="exportBtn" disabled>💾 CSV 다운로드</button>
+            <div class="distance-info" id="distanceInfo" style="display: none;">
+                <div class="distance-item">
+                    <span class="distance-label">총 경로 거리</span>
+                    <span class="distance-value" id="totalDistance">0 m</span>
+                </div>
+                <div class="distance-item">
+                    <span class="distance-label">마커 간 평균 거리</span>
+                    <span class="distance-value" id="avgDistance">0 m</span>
+                </div>
+            </div>
             <div class="info">
                 <span id="pointCount">저장된 지점: 0개</span>
             </div>
@@ -278,6 +339,8 @@
         let sampledCoordinates = [];
         let sampledMarkers = [];
         let sampledPolyline = null;
+        let totalPathDistance = 0;
+        let segmentDistance = 0;
 
         // UI 요소
         const drawBtn = document.getElementById('drawBtn');
@@ -315,8 +378,21 @@
             map.dragging.enable();
 
             if (drawingPath.length > 1) {
+                // 총 경로 거리 계산
+                totalPathDistance = 0;
+                for (let i = 0; i < drawingPath.length - 1; i++) {
+                    totalPathDistance += distance(drawingPath[i], drawingPath[i + 1]);
+                }
+
                 generateBtn.disabled = false;
-                updateCoordinatesList(`경로 그리기 완료! (${drawingPath.length}개 원본 지점)`);
+                const distanceKm = (totalPathDistance / 1000).toFixed(2);
+                const distanceM = totalPathDistance.toFixed(0);
+                const distText = totalPathDistance >= 1000 ? `${distanceKm} km` : `${distanceM} m`;
+                updateCoordinatesList(`경로 그리기 완료! (${drawingPath.length}개 원본 지점, 총 거리: ${distText})`);
+
+                // 거리 정보 표시
+                document.getElementById('totalDistance').textContent = distText;
+                document.getElementById('distanceInfo').style.display = 'flex';
             } else {
                 updateCoordinatesList('경로가 너무 짧습니다. 다시 그려주세요.');
             }
@@ -374,6 +450,28 @@
             // 경로 균등 분할
             sampledCoordinates = interpolatePath(drawingPath, sampleCount);
 
+            // 마커 간 거리 계산 및 누적 거리 추가
+            let cumulativeDistance = 0;
+            sampledCoordinates[0].segmentDistance = 0;
+            sampledCoordinates[0].cumulativeDistance = 0;
+
+            for (let i = 1; i < sampledCoordinates.length; i++) {
+                const dist = distance(
+                    [sampledCoordinates[i-1].lat, sampledCoordinates[i-1].lng],
+                    [sampledCoordinates[i].lat, sampledCoordinates[i].lng]
+                );
+                cumulativeDistance += dist;
+                sampledCoordinates[i].segmentDistance = dist;
+                sampledCoordinates[i].cumulativeDistance = cumulativeDistance;
+            }
+
+            // 평균 거리 계산
+            segmentDistance = totalPathDistance / (sampleCount - 1);
+            const avgDistKm = (segmentDistance / 1000).toFixed(3);
+            const avgDistM = segmentDistance.toFixed(1);
+            const avgDistText = segmentDistance >= 1000 ? `${avgDistKm} km` : `${avgDistM} m`;
+            document.getElementById('avgDistance').textContent = avgDistText;
+
             // 샘플링된 좌표에 마커 추가
             sampledCoordinates.forEach((coord, index) => {
                 const marker = L.circleMarker([coord.lat, coord.lng], {
@@ -385,7 +483,14 @@
                     fillOpacity: 0.8
                 }).addTo(map);
 
-                marker.bindPopup(`<b>지점 ${index + 1}</b><br>위도: ${coord.lat}<br>경도: ${coord.lng}`);
+                const segDistText = coord.segmentDistance >= 1000
+                    ? `${(coord.segmentDistance / 1000).toFixed(3)} km`
+                    : `${coord.segmentDistance.toFixed(1)} m`;
+                const cumDistText = coord.cumulativeDistance >= 1000
+                    ? `${(coord.cumulativeDistance / 1000).toFixed(2)} km`
+                    : `${coord.cumulativeDistance.toFixed(0)} m`;
+
+                marker.bindPopup(`<b>지점 ${index + 1}</b><br>위도: ${coord.lat}<br>경도: ${coord.lng}<br>구간 거리: ${segDistText}<br>누적 거리: ${cumDistText}`);
                 sampledMarkers.push(marker);
             });
 
@@ -517,6 +622,11 @@
                 generateBtn.disabled = true;
                 exportBtn.disabled = true;
 
+                // 거리 정보 초기화
+                totalPathDistance = 0;
+                segmentDistance = 0;
+                document.getElementById('distanceInfo').style.display = 'none';
+
                 updateCoordinatesList();
             }
         });
@@ -533,12 +643,27 @@
                 coordList.innerHTML = '<li class="empty-message">경로를 그려주세요</li>';
                 pointCount.textContent = '저장된 지점: 0개';
             } else {
-                coordList.innerHTML = sampledCoordinates.map((coord, index) =>
-                    `<li onclick="focusMarker(${index})">
-                        <span class="marker-number">${index + 1}.</span>
-                        ${coord.lat}, ${coord.lng}
-                    </li>`
-                ).join('');
+                coordList.innerHTML = sampledCoordinates.map((coord, index) => {
+                    const segDistText = coord.segmentDistance >= 1000
+                        ? `${(coord.segmentDistance / 1000).toFixed(3)} km`
+                        : `${coord.segmentDistance.toFixed(1)} m`;
+                    const cumDistText = coord.cumulativeDistance >= 1000
+                        ? `${(coord.cumulativeDistance / 1000).toFixed(2)} km`
+                        : `${coord.cumulativeDistance.toFixed(0)} m`;
+
+                    return `<li onclick="focusMarker(${index})">
+                        <div class="coord-info">
+                            <div class="coord-latlon">
+                                <span class="marker-number">${index + 1}.</span>
+                                ${coord.lat}, ${coord.lng}
+                            </div>
+                            <div class="coord-distance">
+                                ${index > 0 ? `<span class="dist-segment">+${segDistText}</span>` : ''}
+                                <span class="dist-total">누적: ${cumDistText}</span>
+                            </div>
+                        </div>
+                    </li>`;
+                }).join('');
                 pointCount.textContent = `저장된 지점: ${sampledCoordinates.length}개`;
             }
         }
@@ -559,11 +684,11 @@
             }
 
             // CSV 헤더
-            let csv = '번호,위도,경도\n';
+            let csv = '번호,위도,경도,구간거리(m),누적거리(m)\n';
 
             // 좌표 데이터 추가
             sampledCoordinates.forEach((coord, index) => {
-                csv += `${index + 1},${coord.lat},${coord.lng}\n`;
+                csv += `${index + 1},${coord.lat},${coord.lng},${coord.segmentDistance.toFixed(2)},${coord.cumulativeDistance.toFixed(2)}\n`;
             });
 
             // Blob 생성 및 다운로드
