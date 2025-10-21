@@ -38,6 +38,30 @@
             align-items: center;
         }
 
+        .input-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background-color: #34495e;
+            padding: 8px 15px;
+            border-radius: 5px;
+        }
+
+        .input-group label {
+            font-size: 14px;
+            color: #ecf0f1;
+            white-space: nowrap;
+        }
+
+        .input-group input {
+            width: 100px;
+            padding: 6px 10px;
+            border: 2px solid #3498db;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: bold;
+        }
+
         button {
             padding: 10px 20px;
             border: none;
@@ -48,12 +72,43 @@
             transition: all 0.3s ease;
         }
 
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        #drawBtn {
+            background-color: #3498db;
+            color: white;
+        }
+
+        #drawBtn:hover:not(:disabled) {
+            background-color: #2980b9;
+        }
+
+        #drawBtn.active {
+            background-color: #e74c3c;
+        }
+
+        #drawBtn.active:hover {
+            background-color: #c0392b;
+        }
+
+        #generateBtn {
+            background-color: #9b59b6;
+            color: white;
+        }
+
+        #generateBtn:hover:not(:disabled) {
+            background-color: #8e44ad;
+        }
+
         #clearBtn {
             background-color: #e74c3c;
             color: white;
         }
 
-        #clearBtn:hover {
+        #clearBtn:hover:not(:disabled) {
             background-color: #c0392b;
         }
 
@@ -62,17 +117,8 @@
             color: white;
         }
 
-        #exportBtn:hover {
+        #exportBtn:hover:not(:disabled) {
             background-color: #229954;
-        }
-
-        #undoBtn {
-            background-color: #f39c12;
-            color: white;
-        }
-
-        #undoBtn:hover {
-            background-color: #d68910;
         }
 
         .info {
@@ -84,6 +130,11 @@
         #map {
             flex: 1;
             position: relative;
+            cursor: default;
+        }
+
+        #map.drawing {
+            cursor: crosshair;
         }
 
         #coordinatesList {
@@ -94,10 +145,10 @@
             padding: 15px;
             border-radius: 8px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.2);
-            max-height: 400px;
+            max-height: 500px;
             overflow-y: auto;
             z-index: 1000;
-            min-width: 250px;
+            min-width: 280px;
         }
 
         #coordinatesList h3 {
@@ -113,11 +164,11 @@
         }
 
         #coordinatesList li {
-            padding: 8px;
-            margin: 5px 0;
+            padding: 6px 8px;
+            margin: 3px 0;
             background: #ecf0f1;
             border-radius: 4px;
-            font-size: 12px;
+            font-size: 11px;
             font-family: monospace;
             cursor: pointer;
             transition: background 0.2s;
@@ -138,15 +189,54 @@
             font-style: italic;
             font-size: 14px;
         }
+
+        .status-message {
+            background-color: #3498db;
+            color: white;
+            padding: 10px 15px;
+            border-radius: 5px;
+            margin-bottom: 10px;
+            font-size: 14px;
+        }
+
+        .instructions {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            z-index: 1000;
+            max-width: 350px;
+        }
+
+        .instructions h4 {
+            color: #2c3e50;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+
+        .instructions ol {
+            margin-left: 20px;
+            color: #34495e;
+            font-size: 13px;
+            line-height: 1.6;
+        }
     </style>
 </head>
 <body>
     <div id="header">
         <h1>🗺️ 지도 경로 좌표 추출기</h1>
         <div class="controls">
-            <button id="undoBtn">↶ 마지막 지점 삭제</button>
+            <div class="input-group">
+                <label for="sampleCount">샘플 개수:</label>
+                <input type="number" id="sampleCount" value="100" min="2" max="10000">
+            </div>
+            <button id="drawBtn">✏️ 경로 그리기 시작</button>
+            <button id="generateBtn" disabled>⚡ 좌표 생성</button>
             <button id="clearBtn">🗑️ 모두 지우기</button>
-            <button id="exportBtn">💾 CSV 다운로드</button>
+            <button id="exportBtn" disabled>💾 CSV 다운로드</button>
             <div class="info">
                 <span id="pointCount">저장된 지점: 0개</span>
             </div>
@@ -154,6 +244,16 @@
     </div>
 
     <div id="map">
+        <div class="instructions">
+            <h4>📖 사용 방법</h4>
+            <ol>
+                <li>샘플 개수를 입력하세요 (예: 50, 100, 1000)</li>
+                <li>"경로 그리기 시작" 버튼을 클릭하세요</li>
+                <li>지도에서 마우스를 드래그하여 경로를 그리세요</li>
+                <li>"좌표 생성" 버튼으로 균등 분할된 좌표를 생성하세요</li>
+                <li>"CSV 다운로드"로 데이터를 저장하세요</li>
+            </ol>
+        </div>
         <div id="coordinatesList">
             <h3>좌표 목록</h3>
             <ul id="coordList"></ul>
@@ -171,110 +271,289 @@
             maxZoom: 19
         }).addTo(map);
 
-        // 좌표 저장 배열
-        let coordinates = [];
-        let markers = [];
-        let polyline = null;
+        // 상태 변수
+        let isDrawing = false;
+        let drawingPath = [];
+        let drawnPolyline = null;
+        let sampledCoordinates = [];
+        let sampledMarkers = [];
+        let sampledPolyline = null;
 
-        // 지도 클릭 이벤트
-        map.on('click', function(e) {
-            const lat = e.latlng.lat.toFixed(6);
-            const lng = e.latlng.lng.toFixed(6);
+        // UI 요소
+        const drawBtn = document.getElementById('drawBtn');
+        const generateBtn = document.getElementById('generateBtn');
+        const clearBtn = document.getElementById('clearBtn');
+        const exportBtn = document.getElementById('exportBtn');
+        const sampleCountInput = document.getElementById('sampleCount');
+        const mapElement = document.getElementById('map');
 
-            // 좌표 저장
-            coordinates.push({ lat: parseFloat(lat), lng: parseFloat(lng) });
-
-            // 마커 추가
-            const markerNumber = coordinates.length;
-            const marker = L.marker([lat, lng], {
-                icon: L.divIcon({
-                    className: 'custom-div-icon',
-                    html: `<div style="background-color: #3498db; color: white; border-radius: 50%; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; font-weight: bold; border: 2px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3);">${markerNumber}</div>`,
-                    iconSize: [30, 30],
-                    iconAnchor: [15, 15]
-                })
-            }).addTo(map);
-
-            marker.bindPopup(`<b>지점 ${markerNumber}</b><br>위도: ${lat}<br>경도: ${lng}`);
-            markers.push(marker);
-
-            // 경로선 업데이트
-            updatePolyline();
-
-            // 좌표 목록 업데이트
-            updateCoordinatesList();
+        // 경로 그리기 시작/종료
+        drawBtn.addEventListener('click', function() {
+            if (!isDrawing) {
+                startDrawing();
+            } else {
+                stopDrawing();
+            }
         });
 
-        // 경로선 업데이트 함수
-        function updatePolyline() {
-            if (polyline) {
-                map.removeLayer(polyline);
-            }
+        function startDrawing() {
+            isDrawing = true;
+            drawingPath = [];
+            drawBtn.textContent = '⏹️ 경로 그리기 종료';
+            drawBtn.classList.add('active');
+            mapElement.classList.add('drawing');
+            map.dragging.disable();
 
-            if (coordinates.length > 1) {
-                const latlngs = coordinates.map(coord => [coord.lat, coord.lng]);
-                polyline = L.polyline(latlngs, {
-                    color: '#e74c3c',
-                    weight: 3,
-                    opacity: 0.7
-                }).addTo(map);
+            updateCoordinatesList('경로를 그리는 중...');
+        }
+
+        function stopDrawing() {
+            isDrawing = false;
+            drawBtn.textContent = '✏️ 경로 그리기 시작';
+            drawBtn.classList.remove('active');
+            mapElement.classList.remove('drawing');
+            map.dragging.enable();
+
+            if (drawingPath.length > 1) {
+                generateBtn.disabled = false;
+                updateCoordinatesList(`경로 그리기 완료! (${drawingPath.length}개 원본 지점)`);
+            } else {
+                updateCoordinatesList('경로가 너무 짧습니다. 다시 그려주세요.');
             }
         }
 
+        // 마우스 이벤트로 경로 그리기
+        map.on('mousedown', function(e) {
+            if (!isDrawing) return;
+
+            drawingPath = [];
+            drawingPath.push([e.latlng.lat, e.latlng.lng]);
+
+            if (drawnPolyline) {
+                map.removeLayer(drawnPolyline);
+            }
+
+            drawnPolyline = L.polyline(drawingPath, {
+                color: '#3498db',
+                weight: 4,
+                opacity: 0.7
+            }).addTo(map);
+        });
+
+        map.on('mousemove', function(e) {
+            if (!isDrawing || drawingPath.length === 0) return;
+
+            drawingPath.push([e.latlng.lat, e.latlng.lng]);
+            drawnPolyline.setLatLngs(drawingPath);
+        });
+
+        map.on('mouseup', function(e) {
+            if (!isDrawing || drawingPath.length === 0) return;
+
+            // 마우스업 시 자동으로 그리기 종료
+            stopDrawing();
+        });
+
+        // 좌표 생성 (균등 분할)
+        generateBtn.addEventListener('click', function() {
+            const sampleCount = parseInt(sampleCountInput.value);
+
+            if (sampleCount < 2 || sampleCount > 10000) {
+                alert('샘플 개수는 2~10000 사이여야 합니다.');
+                return;
+            }
+
+            if (drawingPath.length < 2) {
+                alert('경로를 먼저 그려주세요.');
+                return;
+            }
+
+            // 기존 샘플 마커 제거
+            clearSampledData();
+
+            // 경로 균등 분할
+            sampledCoordinates = interpolatePath(drawingPath, sampleCount);
+
+            // 샘플링된 좌표에 마커 추가
+            sampledCoordinates.forEach((coord, index) => {
+                const marker = L.circleMarker([coord.lat, coord.lng], {
+                    radius: 5,
+                    fillColor: '#e74c3c',
+                    color: '#fff',
+                    weight: 2,
+                    opacity: 1,
+                    fillOpacity: 0.8
+                }).addTo(map);
+
+                marker.bindPopup(`<b>지점 ${index + 1}</b><br>위도: ${coord.lat}<br>경도: ${coord.lng}`);
+                sampledMarkers.push(marker);
+            });
+
+            // 샘플링된 경로선 추가
+            const latlngs = sampledCoordinates.map(coord => [coord.lat, coord.lng]);
+            sampledPolyline = L.polyline(latlngs, {
+                color: '#e74c3c',
+                weight: 3,
+                opacity: 0.7,
+                dashArray: '10, 5'
+            }).addTo(map);
+
+            exportBtn.disabled = false;
+            updateCoordinatesList();
+        });
+
+        // 경로 균등 분할 알고리즘
+        function interpolatePath(path, numPoints) {
+            if (path.length < 2) return [];
+
+            // 경로의 총 길이 계산
+            const segments = [];
+            let totalLength = 0;
+
+            for (let i = 0; i < path.length - 1; i++) {
+                const dist = distance(path[i], path[i + 1]);
+                segments.push(dist);
+                totalLength += dist;
+            }
+
+            // 균등 간격 계산
+            const interval = totalLength / (numPoints - 1);
+            const result = [];
+
+            // 첫 번째 점 추가
+            result.push({
+                lat: parseFloat(path[0][0].toFixed(6)),
+                lng: parseFloat(path[0][1].toFixed(6))
+            });
+
+            let currentDistance = 0;
+            let targetDistance = interval;
+            let segmentIndex = 0;
+            let segmentStart = 0;
+
+            for (let i = 1; i < numPoints - 1; i++) {
+                // 다음 타겟 거리까지 이동
+                while (segmentIndex < segments.length && currentDistance + segments[segmentIndex] - segmentStart < targetDistance) {
+                    currentDistance += segments[segmentIndex] - segmentStart;
+                    segmentStart = 0;
+                    segmentIndex++;
+                }
+
+                if (segmentIndex >= segments.length) break;
+
+                // 현재 세그먼트 내에서 보간
+                const remainingDistance = targetDistance - currentDistance;
+                const segmentLength = segments[segmentIndex];
+                const ratio = (segmentStart + remainingDistance) / segmentLength;
+
+                const lat = path[segmentIndex][0] + (path[segmentIndex + 1][0] - path[segmentIndex][0]) * ratio;
+                const lng = path[segmentIndex][1] + (path[segmentIndex + 1][1] - path[segmentIndex][1]) * ratio;
+
+                result.push({
+                    lat: parseFloat(lat.toFixed(6)),
+                    lng: parseFloat(lng.toFixed(6))
+                });
+
+                segmentStart += remainingDistance;
+                targetDistance += interval;
+            }
+
+            // 마지막 점 추가
+            const lastPoint = path[path.length - 1];
+            result.push({
+                lat: parseFloat(lastPoint[0].toFixed(6)),
+                lng: parseFloat(lastPoint[1].toFixed(6))
+            });
+
+            return result;
+        }
+
+        // 두 점 사이의 거리 계산 (Haversine formula)
+        function distance(point1, point2) {
+            const R = 6371e3; // 지구 반경 (미터)
+            const φ1 = point1[0] * Math.PI / 180;
+            const φ2 = point2[0] * Math.PI / 180;
+            const Δφ = (point2[0] - point1[0]) * Math.PI / 180;
+            const Δλ = (point2[1] - point1[1]) * Math.PI / 180;
+
+            const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+                      Math.cos(φ1) * Math.cos(φ2) *
+                      Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+            return R * c;
+        }
+
+        // 샘플 데이터 지우기
+        function clearSampledData() {
+            sampledMarkers.forEach(marker => map.removeLayer(marker));
+            sampledMarkers = [];
+            sampledCoordinates = [];
+            if (sampledPolyline) {
+                map.removeLayer(sampledPolyline);
+                sampledPolyline = null;
+            }
+        }
+
+        // 모두 지우기
+        clearBtn.addEventListener('click', function() {
+            if (confirm('모든 데이터를 삭제하시겠습니까?')) {
+                // 그린 경로 지우기
+                drawingPath = [];
+                if (drawnPolyline) {
+                    map.removeLayer(drawnPolyline);
+                    drawnPolyline = null;
+                }
+
+                // 샘플 데이터 지우기
+                clearSampledData();
+
+                // UI 초기화
+                isDrawing = false;
+                drawBtn.textContent = '✏️ 경로 그리기 시작';
+                drawBtn.classList.remove('active');
+                mapElement.classList.remove('drawing');
+                map.dragging.enable();
+                generateBtn.disabled = true;
+                exportBtn.disabled = true;
+
+                updateCoordinatesList();
+            }
+        });
+
         // 좌표 목록 업데이트 함수
-        function updateCoordinatesList() {
+        function updateCoordinatesList(message = null) {
             const coordList = document.getElementById('coordList');
             const pointCount = document.getElementById('pointCount');
 
-            if (coordinates.length === 0) {
-                coordList.innerHTML = '<li class="empty-message">지도를 클릭하여 경로를 추가하세요</li>';
+            if (message) {
+                coordList.innerHTML = `<li class="empty-message">${message}</li>`;
+                pointCount.textContent = '저장된 지점: 0개';
+            } else if (sampledCoordinates.length === 0) {
+                coordList.innerHTML = '<li class="empty-message">경로를 그려주세요</li>';
                 pointCount.textContent = '저장된 지점: 0개';
             } else {
-                coordList.innerHTML = coordinates.map((coord, index) =>
+                coordList.innerHTML = sampledCoordinates.map((coord, index) =>
                     `<li onclick="focusMarker(${index})">
                         <span class="marker-number">${index + 1}.</span>
                         ${coord.lat}, ${coord.lng}
                     </li>`
                 ).join('');
-                pointCount.textContent = `저장된 지점: ${coordinates.length}개`;
+                pointCount.textContent = `저장된 지점: ${sampledCoordinates.length}개`;
             }
         }
 
         // 마커 포커스 함수
         function focusMarker(index) {
-            const marker = markers[index];
-            map.setView([coordinates[index].lat, coordinates[index].lng], 15);
-            marker.openPopup();
+            if (sampledMarkers[index]) {
+                map.setView([sampledCoordinates[index].lat, sampledCoordinates[index].lng], 15);
+                sampledMarkers[index].openPopup();
+            }
         }
 
-        // 마지막 지점 삭제
-        document.getElementById('undoBtn').addEventListener('click', function() {
-            if (coordinates.length > 0) {
-                coordinates.pop();
-                const lastMarker = markers.pop();
-                map.removeLayer(lastMarker);
-                updatePolyline();
-                updateCoordinatesList();
-            }
-        });
-
-        // 모두 지우기
-        document.getElementById('clearBtn').addEventListener('click', function() {
-            if (confirm('모든 좌표를 삭제하시겠습니까?')) {
-                coordinates = [];
-                markers.forEach(marker => map.removeLayer(marker));
-                markers = [];
-                if (polyline) {
-                    map.removeLayer(polyline);
-                    polyline = null;
-                }
-                updateCoordinatesList();
-            }
-        });
-
         // CSV 다운로드
-        document.getElementById('exportBtn').addEventListener('click', function() {
-            if (coordinates.length === 0) {
+        exportBtn.addEventListener('click', function() {
+            if (sampledCoordinates.length === 0) {
                 alert('저장된 좌표가 없습니다.');
                 return;
             }
@@ -283,7 +562,7 @@
             let csv = '번호,위도,경도\n';
 
             // 좌표 데이터 추가
-            coordinates.forEach((coord, index) => {
+            sampledCoordinates.forEach((coord, index) => {
                 csv += `${index + 1},${coord.lat},${coord.lng}\n`;
             });
 
@@ -293,7 +572,7 @@
             const url = URL.createObjectURL(blob);
 
             const now = new Date();
-            const filename = `route_coordinates_${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}.csv`;
+            const filename = `route_coordinates_${sampledCoordinates.length}points_${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}.csv`;
 
             link.setAttribute('href', url);
             link.setAttribute('download', filename);
@@ -302,7 +581,7 @@
             link.click();
             document.body.removeChild(link);
 
-            alert(`${coordinates.length}개의 좌표가 ${filename} 파일로 저장되었습니다.`);
+            alert(`${sampledCoordinates.length}개의 좌표가 ${filename} 파일로 저장되었습니다.`);
         });
 
         // 초기 좌표 목록 표시
