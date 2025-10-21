@@ -241,6 +241,23 @@
             font-size: 14px;
         }
 
+        /* Tooltip 스타일 */
+        .coordinate-tooltip {
+            background-color: rgba(44, 62, 80, 0.95);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 6px 10px;
+            font-size: 12px;
+            font-family: monospace;
+            font-weight: bold;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        }
+
+        .coordinate-tooltip::before {
+            border-top-color: rgba(44, 62, 80, 0.95);
+        }
+
         .status-message {
             background-color: #3498db;
             color: white;
@@ -465,6 +482,12 @@
             // 경로 균등 분할
             sampledCoordinates = interpolatePath(drawingPath, sampleCount);
 
+            // 검증: 생성된 좌표 개수 확인
+            console.log(`요청한 샘플 개수: ${sampleCount}, 생성된 좌표 개수: ${sampledCoordinates.length}`);
+            if (sampledCoordinates.length !== sampleCount) {
+                console.warn(`경고: 좌표 개수 불일치! 요청=${sampleCount}, 생성=${sampledCoordinates.length}`);
+            }
+
             // 마커 간 거리 계산 및 누적 거리 추가
             let cumulativeDistance = 0;
             sampledCoordinates[0].segmentDistance = 0;
@@ -505,7 +528,16 @@
                     ? `${(coord.cumulativeDistance / 1000).toFixed(2)} km`
                     : `${coord.cumulativeDistance.toFixed(0)} m`;
 
+                // Popup (클릭 시)
                 marker.bindPopup(`<b>지점 ${index + 1}</b><br>위도: ${coord.lat}<br>경도: ${coord.lng}<br>구간 거리: ${segDistText}<br>누적 거리: ${cumDistText}`);
+
+                // Tooltip (마우스 오버 시)
+                marker.bindTooltip(`#${index + 1}: ${coord.lat}, ${coord.lng}`, {
+                    permanent: false,
+                    direction: 'top',
+                    className: 'coordinate-tooltip'
+                });
+
                 sampledMarkers.push(marker);
             });
 
@@ -520,52 +552,55 @@
 
             exportBtn.disabled = false;
             updateCoordinatesList();
+
+            // 성공 메시지
+            alert(`${sampledCoordinates.length}개의 좌표가 성공적으로 생성되었습니다.`);
         });
 
         // 경로 균등 분할 알고리즘
         function interpolatePath(path, numPoints) {
             if (path.length < 2) return [];
 
-            // 경로의 총 길이 계산
+            // 각 세그먼트의 거리와 누적 거리 계산
             const segments = [];
+            const cumulativeDistances = [0];
             let totalLength = 0;
 
             for (let i = 0; i < path.length - 1; i++) {
                 const dist = distance(path[i], path[i + 1]);
                 segments.push(dist);
                 totalLength += dist;
+                cumulativeDistances.push(totalLength);
             }
 
-            // 균등 간격 계산
-            const interval = totalLength / (numPoints - 1);
+            // 결과 배열
             const result = [];
 
-            // 첫 번째 점 추가
-            result.push({
-                lat: parseFloat(path[0][0].toFixed(6)),
-                lng: parseFloat(path[0][1].toFixed(6))
-            });
+            // 각 샘플 포인트 생성
+            for (let i = 0; i < numPoints; i++) {
+                // 목표 거리 계산
+                const targetDistance = (totalLength * i) / (numPoints - 1);
 
-            let currentDistance = 0;
-            let targetDistance = interval;
-            let segmentIndex = 0;
-            let segmentStart = 0;
-
-            for (let i = 1; i < numPoints - 1; i++) {
-                // 다음 타겟 거리까지 이동
-                while (segmentIndex < segments.length && currentDistance + segments[segmentIndex] - segmentStart < targetDistance) {
-                    currentDistance += segments[segmentIndex] - segmentStart;
-                    segmentStart = 0;
-                    segmentIndex++;
+                // 목표 거리가 속한 세그먼트 찾기
+                let segmentIndex = 0;
+                for (let j = 0; j < cumulativeDistances.length - 1; j++) {
+                    if (targetDistance >= cumulativeDistances[j] && targetDistance <= cumulativeDistances[j + 1]) {
+                        segmentIndex = j;
+                        break;
+                    }
                 }
 
-                if (segmentIndex >= segments.length) break;
+                // 세그먼트 내에서의 상대 위치 계산
+                const segmentStartDist = cumulativeDistances[segmentIndex];
+                const segmentEndDist = cumulativeDistances[segmentIndex + 1];
+                const segmentLength = segmentEndDist - segmentStartDist;
 
-                // 현재 세그먼트 내에서 보간
-                const remainingDistance = targetDistance - currentDistance;
-                const segmentLength = segments[segmentIndex];
-                const ratio = (segmentStart + remainingDistance) / segmentLength;
+                let ratio = 0;
+                if (segmentLength > 0) {
+                    ratio = (targetDistance - segmentStartDist) / segmentLength;
+                }
 
+                // 선형 보간으로 좌표 계산
                 const lat = path[segmentIndex][0] + (path[segmentIndex + 1][0] - path[segmentIndex][0]) * ratio;
                 const lng = path[segmentIndex][1] + (path[segmentIndex + 1][1] - path[segmentIndex][1]) * ratio;
 
@@ -573,17 +608,7 @@
                     lat: parseFloat(lat.toFixed(6)),
                     lng: parseFloat(lng.toFixed(6))
                 });
-
-                segmentStart += remainingDistance;
-                targetDistance += interval;
             }
-
-            // 마지막 점 추가
-            const lastPoint = path[path.length - 1];
-            result.push({
-                lat: parseFloat(lastPoint[0].toFixed(6)),
-                lng: parseFloat(lastPoint[1].toFixed(6))
-            });
 
             return result;
         }
